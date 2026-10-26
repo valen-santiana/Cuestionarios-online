@@ -1,0 +1,1161 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Repaso Activo</title>
+<meta name="description" content="Genera cuestionarios de repaso a partir de tus apuntes: opción múltiple, verdadero/falso, asociación, preguntas abiertas y casos reales con Gemini. Práctica en tiempo real y descarga en Word.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<style>
+/* Layout: study desk — left rail for material + settings, right sheet for the live quiz. Highlighter yellow marks what matters. */
+:root{
+  --bg:#eef1f4; --surface:#ffffff; --sunk:#f6f8fa; --ink:#15202b; --muted:#5a6775; --line:#d6dde4;
+  --accent:#2a46b8; --accent-ink:#ffffff; --mark-bg:#ffe36b; --mark-ink:#2b2300;
+  --ok:#1d7f48; --ok-bg:#e3f4ea; --bad:#b8332c; --bad-bg:#fbe7e5; --mid:#9a6a00; --mid-bg:#fff3d1;
+  --f-display:"Bricolage Grotesque","Segoe UI",system-ui,sans-serif;
+  --f-body:"IBM Plex Sans","Segoe UI",system-ui,sans-serif;
+  --f-mono:"IBM Plex Mono",ui-monospace,Consolas,monospace;
+  --r:10px;
+}
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){
+  --bg:#0e1319; --surface:#161d25; --sunk:#111820; --ink:#e5eaf0; --muted:#94a2b1; --line:#283340;
+  --accent:#8aa2ff; --accent-ink:#0b1020; --mark-bg:#e3c43a; --mark-ink:#1c1600;
+  --ok:#5fcf8d; --ok-bg:#14301f; --bad:#ff8a80; --bad-bg:#3a1a18; --mid:#f0c44c; --mid-bg:#352a0c; color-scheme:dark } }
+:root[data-theme="dark"]{
+  --bg:#0e1319; --surface:#161d25; --sunk:#111820; --ink:#e5eaf0; --muted:#94a2b1; --line:#283340;
+  --accent:#8aa2ff; --accent-ink:#0b1020; --mark-bg:#e3c43a; --mark-ink:#1c1600;
+  --ok:#5fcf8d; --ok-bg:#14301f; --bad:#ff8a80; --bad-bg:#3a1a18; --mid:#f0c44c; --mid-bg:#352a0c; color-scheme:dark }
+
+*{box-sizing:border-box}
+:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+[hidden]{display:none!important}
+img{max-width:100%}
+a{color:var(--accent)}
+body{background:var(--bg);color:var(--ink);font:15px/1.55 var(--f-body);margin:0}
+.wrap{max-width:1240px;margin:0 auto;padding-block:20px 48px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+header.top{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:8px 24px;margin-bottom:18px}
+h1{font:700 clamp(26px,4vw,36px)/1.1 var(--f-display);margin:0;letter-spacing:-.01em}
+h1 .hl{background:linear-gradient(transparent 55%,var(--mark-bg) 55%);padding:0 2px}
+.tag{color:var(--muted);font-size:14px;max-width:60ch;margin:0}
+.grid{display:grid;grid-template-columns:minmax(0,390px) minmax(0,1fr);gap:18px;align-items:start}
+@media (max-width:900px){.grid{grid-template-columns:minmax(0,1fr)}}
+.rail{display:flex;flex-direction:column;gap:18px;min-width:0}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:18px;display:flex;flex-direction:column;gap:14px;min-width:0}
+.step{display:flex;align-items:center;gap:10px}
+.step b{font:500 12px var(--f-mono);width:24px;height:24px;border-radius:50%;display:grid;place-items:center;background:var(--ink);color:var(--surface);flex:none}
+.step h2{font:700 18px/1.2 var(--f-display);margin:0}
+details.panel summary{cursor:pointer;list-style:none}
+details.panel summary::-webkit-details-marker{display:none}
+details.panel summary .chev{margin-left:auto;font:500 12px var(--f-mono);color:var(--muted)}
+.lbl{font:500 11px var(--f-mono);text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
+.field{display:flex;flex-direction:column;gap:6px}
+textarea,input[type=text],input[type=password],select{font:inherit;color:var(--ink);background:var(--sunk);border:1px solid var(--line);border-radius:8px;padding:9px 11px;width:100%}
+textarea{min-height:180px;resize:vertical;font-size:13.5px;line-height:1.5}
+textarea:focus,input:focus,select:focus,button:focus-visible,.drop:focus-within,summary:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.drop{position:relative;border:1.5px dashed var(--line);border-radius:8px;padding:16px;text-align:center;background:var(--sunk);cursor:pointer}
+.drop.over{border-color:var(--accent)}
+.drop strong{display:block;font-weight:600}
+.drop small{color:var(--muted)}
+.drop input{position:absolute;width:1px;height:1px;opacity:0}
+.row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.between{justify-content:space-between}
+button{font:500 14px var(--f-body);border-radius:8px;border:1px solid var(--line);background:var(--surface);color:var(--ink);padding:8px 13px;cursor:pointer}
+button:hover:not(:disabled){border-color:var(--accent)}
+button:disabled{opacity:.5;cursor:not-allowed}
+button.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);font-weight:600}
+button.big{padding:12px 16px;font-size:15px;width:100%}
+button.ghost{border-color:transparent;background:transparent;color:var(--accent);padding-inline:6px}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{position:relative;border:1px solid var(--line);border-radius:999px;padding:6px 12px;font-size:13.5px;background:var(--surface);cursor:pointer;user-select:none;display:inline-flex;gap:6px;align-items:center}
+.chip input{position:absolute;opacity:0;width:1px;height:1px}
+.chip:has(input:checked){background:var(--ink);color:var(--surface);border-color:var(--ink)}
+.chip:has(input:focus-visible){outline:2px solid var(--accent);outline-offset:1px}
+.chip .g{font:500 10px var(--f-mono);letter-spacing:.05em;padding:1px 5px;border-radius:4px;background:var(--mark-bg);color:var(--mark-ink)}
+.countrow{display:flex;align-items:center;gap:12px}
+.countrow input[type=range]{flex:1;accent-color:var(--accent)}
+.countnum{font:700 28px/1 var(--f-display);min-width:2.2ch;text-align:right;font-variant-numeric:tabular-nums}
+.sources{display:flex;flex-direction:column;gap:4px;font-size:13px}
+.src{display:flex;justify-content:space-between;gap:10px;color:var(--muted)}
+.src span:first-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--ink)}
+.mono{font-family:var(--f-mono);font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums}
+.status{font-size:13px;color:var(--muted);min-height:1.2em;margin:0}
+.status.err{color:var(--bad)}
+.note{font-size:13px;color:var(--muted);margin:0}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+@media (max-width:420px){.two{grid-template-columns:1fr}}
+.concepts{font-size:13px;display:flex;gap:8px;align-items:baseline;flex-wrap:wrap}
+.concepts b{font:700 18px var(--f-display)}
+.concepts span{flex:1;min-width:0}
+.toggle{display:flex;gap:8px;align-items:center;font-size:14px;cursor:pointer}
+.toggle input{accent-color:var(--accent);width:16px;height:16px;flex:none}
+.gstate{font:500 12px var(--f-mono);padding:2px 8px;border-radius:5px;border:1px solid var(--line);color:var(--muted)}
+.gstate.on{background:var(--ok-bg);color:var(--ok);border-color:var(--ok)}
+
+/* quiz sheet */
+.sheet{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);min-width:0;display:flex;flex-direction:column}
+.sheet-head{padding:16px 20px;border-bottom:1px solid var(--line);display:flex;flex-wrap:wrap;gap:10px 18px;align-items:center;justify-content:space-between}
+.sheet-head h2{font:700 20px/1.2 var(--f-display);margin:0}
+.sheet-body{padding:20px;display:flex;flex-direction:column;gap:16px;min-width:0}
+.banner{background:var(--mark-bg);color:var(--mark-ink);border-radius:8px;padding:10px 14px;font-size:14px}
+.progress{height:6px;border-radius:99px;background:var(--sunk);border:1px solid var(--line);overflow:hidden}
+.progress i{display:block;height:100%;background:var(--accent);width:0;transition:width .25s}
+.qmeta{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.pill{font:500 11px var(--f-mono);text-transform:uppercase;letter-spacing:.07em;padding:3px 8px;border-radius:5px;border:1px solid var(--line);color:var(--muted)}
+.pill.t-case{background:var(--mark-bg);color:var(--mark-ink);border-color:transparent}
+.qnum{font:500 13px var(--f-mono);color:var(--muted);font-variant-numeric:tabular-nums}
+.case{border:1px solid var(--line);border-left:4px solid var(--ink);background:var(--sunk);border-radius:6px;padding:12px 14px;font-size:14.5px;white-space:pre-wrap}
+.case .lbl{display:block;margin-bottom:4px;white-space:normal}
+.stem{font:600 18px/1.4 var(--f-body);margin:0;max-width:70ch;white-space:pre-wrap}
+.opts{display:flex;flex-direction:column;gap:8px}
+.opt{display:flex;gap:12px;align-items:flex-start;text-align:left;width:100%;padding:11px 13px;font-weight:400;line-height:1.45}
+.opt:disabled{opacity:1;cursor:default}
+.opt .k{font:500 13px var(--f-mono);border:1px solid var(--line);border-radius:5px;width:24px;height:24px;display:grid;place-items:center;flex:none}
+.opt.sel{border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent)}
+.opt.right{border-color:var(--ok);background:var(--ok-bg)}
+.opt.wrong{border-color:var(--bad);background:var(--bad-bg)}
+.opt.right .k{background:var(--ok);color:var(--surface);border-color:var(--ok)}
+.opt.wrong .k{background:var(--bad);color:var(--surface);border-color:var(--bad)}
+.match{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.3fr);gap:16px}
+@media (max-width:640px){.match{grid-template-columns:minmax(0,1fr)}}
+.mrow{display:flex;gap:10px;align-items:center;padding:8px 0;border-bottom:1px solid var(--line)}
+.mrow .c{flex:1;min-width:0;font-weight:500}
+.mrow select{width:74px;flex:none;font-family:var(--f-mono)}
+.mrow.right select{border-color:var(--ok);background:var(--ok-bg)}
+.mrow.wrong select{border-color:var(--bad);background:var(--bad-bg)}
+.mrow .fix{font:500 12px var(--f-mono);color:var(--ok)}
+.defs{display:flex;flex-direction:column;gap:8px;font-size:14px}
+.defs div{display:flex;gap:10px}
+.defs b{font:500 13px var(--f-mono);flex:none;width:20px}
+.typed{min-height:110px}
+input.typed1{max-width:420px}
+.expl{border-radius:8px;padding:12px 14px;font-size:14.5px;border:1px solid var(--line);display:flex;flex-direction:column;gap:6px}
+.expl.ok{background:var(--ok-bg);border-color:var(--ok)}
+.expl.no{background:var(--bad-bg);border-color:var(--bad)}
+.expl.mid{background:var(--mid-bg);border-color:var(--mid)}
+.expl strong{display:block}
+.nav{display:flex;flex-wrap:wrap;gap:8px;justify-content:space-between;padding:14px 20px;border-top:1px solid var(--line)}
+.score{font:500 13px var(--f-mono);font-variant-numeric:tabular-nums;color:var(--muted)}
+.score b{color:var(--ink)}
+.empty{padding:40px 20px;text-align:center;color:var(--muted)}
+.result-top{display:flex;flex-wrap:wrap;gap:20px;align-items:center}
+.bigscore{font:700 56px/1 var(--f-display);font-variant-numeric:tabular-nums}
+.bars{display:flex;flex-direction:column;gap:8px;flex:1;min-width:220px}
+.bar{display:grid;grid-template-columns:130px 1fr 56px;gap:10px;align-items:center;font-size:13.5px}
+.bar .track{height:8px;background:var(--sunk);border:1px solid var(--line);border-radius:99px;overflow:hidden}
+.bar .track i{display:block;height:100%;background:var(--accent)}
+.bar .mono{text-align:right}
+details.rv{border:1px solid var(--line);border-radius:8px;padding:10px 14px}
+details.rv summary{cursor:pointer;display:flex;gap:10px;align-items:baseline;list-style:none}
+details.rv summary::-webkit-details-marker{display:none}
+.dot{width:9px;height:9px;border-radius:50%;flex:none}
+.dot.ok{background:var(--ok)} .dot.no{background:var(--bad)} .dot.na{background:var(--line)}
+details.rv .inner{padding-top:10px;font-size:14px;display:flex;flex-direction:column;gap:6px}
+.spinner{display:inline-block;width:14px;height:14px;border:2px solid var(--line);border-top-color:var(--accent);border-radius:50%;animation:sp .8s linear infinite;vertical-align:-2px;margin-right:6px}
+@keyframes sp{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){.spinner{animation-duration:3s}.progress i{transition:none}}
+.concepts .ghost{padding:0 4px;font-size:13px}
+.rev{flex-basis:100%;display:flex;flex-direction:column;gap:6px;max-height:320px;overflow:auto;border:1px solid var(--line);border-radius:8px;padding:10px;background:var(--sunk)}
+.revrow{display:flex;gap:8px;align-items:flex-start;font-size:13px;cursor:pointer}
+.revrow b{font:600 13px var(--f-body)}
+.revrow input{margin-top:3px;accent-color:var(--accent);flex:none}
+.revrow.off span{opacity:.5;text-decoration:line-through}
+.dlbox{display:flex;flex-direction:column;gap:10px;padding:14px;border:1px solid var(--line);border-radius:8px;background:var(--sunk)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <h1>Repaso <span class="hl">Activo</span></h1>
+    <p class="tag">Convierte tus apuntes en cuestionarios: opción múltiple, verdadero/falso, asociación, preguntas abiertas y casos reales. Gratis, desde tu navegador.</p>
+  </header>
+
+  <div class="grid">
+    <div class="rail">
+      <!-- MATERIAL -->
+      <section class="panel" aria-labelledby="s1">
+        <div class="step"><b>1</b><h2 id="s1">Tu material</h2></div>
+        <label class="drop" id="drop" for="file">
+          <input type="file" id="file" multiple accept=".pdf,.docx,.pptx,.txt,.md,.csv,image/*">
+          <strong>Subir archivos</strong>
+          <small>PDF, Word, PowerPoint o texto. Fotos y PDF escaneados necesitan Gemini.</small>
+        </label>
+        <div class="sources" id="sources"></div>
+        <div class="field">
+          <div class="row between"><label class="lbl" for="material">Apuntes</label><span class="mono" id="chars">0 caracteres</span></div>
+          <textarea id="material" placeholder="Pega aquí tus notas de clase…"></textarea>
+        </div>
+        <div class="concepts" id="concepts"></div>
+        <p class="note">Para mejores preguntas sin internet, escribe un concepto por línea: <b>Concepto: definición</b>.</p>
+        <div class="row">
+          <button id="gloss">Crear glosario con Gemini</button>
+          <button id="trEs">Traducir al español</button>
+          <button id="trEn">Traducir al inglés</button>
+          <button id="clearMat" class="ghost">Vaciar</button>
+          <button id="undoGloss" class="ghost" hidden>Deshacer glosario</button>
+        </div>
+        <p class="status" id="matStatus" role="status"></p>
+      </section>
+
+      <!-- CONFIG -->
+      <section class="panel" aria-labelledby="s2">
+        <div class="step"><b>2</b><h2 id="s2">Configura el cuestionario</h2></div>
+        <div class="field">
+          <span class="lbl">Cantidad de preguntas</span>
+          <div class="chips" role="radiogroup" aria-label="Rango">
+            <label class="chip"><input type="radio" name="range" value="1-10" checked>1 – 10</label>
+            <label class="chip"><input type="radio" name="range" value="10-20">10 – 20</label>
+            <label class="chip"><input type="radio" name="range" value="20-30">20 – 30</label>
+          </div>
+          <div class="countrow"><input type="range" id="count" min="1" max="10" value="10" aria-label="Número exacto"><span class="countnum" id="countOut">10</span></div>
+        </div>
+        <div class="field">
+          <span class="lbl">Tipos de pregunta</span>
+          <div class="chips">
+            <label class="chip"><input type="checkbox" name="type" value="mcq" checked>Opción múltiple</label>
+            <label class="chip"><input type="checkbox" name="type" value="tf" checked>Verdadero / Falso</label>
+            <label class="chip"><input type="checkbox" name="type" value="match" checked>Asociar conceptos</label>
+            <label class="chip"><input type="checkbox" name="type" value="open" checked>Abiertas</label>
+            <label class="chip"><input type="checkbox" name="type" value="cloze">Completar</label>
+            <label class="chip"><input type="checkbox" name="type" value="case">Casos reales <span class="g">GEMINI</span></label>
+          </div>
+        </div>
+        <div class="two">
+          <div class="field"><label class="lbl" for="area">Área de los casos</label>
+            <select id="area">
+              <option value="auto">Detectar del material</option>
+              <option value="medicina">Medicina (casos clínicos)</option>
+              <option value="ingenieria">Ingeniería / industria</option>
+              <option value="ambiental">Ingeniería ambiental</option>
+              <option value="administracion">Administración / producción</option>
+              <option value="ciencias">Ciencias básicas</option>
+              <option value="derecho">Derecho</option>
+            </select></div>
+          <div class="field"><label class="lbl" for="diff">Dificultad</label>
+            <select id="diff">
+              <option value="basica">Básica</option>
+              <option value="intermedia" selected>Intermedia</option>
+              <option value="avanzada">Avanzada</option>
+            </select></div>
+          <div class="field"><label class="lbl" for="lang">Idioma (Gemini)</label>
+            <select id="lang"><option value="español">Español</option><option value="inglés">Inglés</option></select></div>
+          <div class="field"><label class="lbl" for="qtitle">Título</label>
+            <input type="text" id="qtitle" value="Cuestionario de repaso"></div>
+        </div>
+        <div class="field"><label class="lbl" for="focus">Enfócate en (opcional, Gemini)</label>
+          <input type="text" id="focus" placeholder="Ej.: capítulo 3, fórmulas de EOQ, arritmias…"></div>
+        <label class="toggle" id="allGemWrap"><input type="checkbox" id="allGem">Generar todos los tipos con Gemini (preguntas más elaboradas)</label>
+        <button class="primary big" id="gen">Generar preguntas</button>
+        <div class="row"><button id="stop" hidden>Detener</button></div>
+        <p class="status" id="genStatus" role="status"></p>
+      </section>
+
+      <!-- GEMINI -->
+      <details class="panel" id="gemPanel">
+        <summary class="step"><b>G</b><h2>Gemini (opcional, gratis)</h2><span class="gstate" id="gState">Sin conectar</span></summary>
+        <p class="note">Sin Gemini la app funciona sin internet con tus propios conceptos. Con una clave gratuita de Gemini se suman <b>casos clínicos y problemas reales</b>, traducción, lectura de fotos y corrección de respuestas abiertas.</p>
+        <div class="field">
+          <label class="lbl" for="gKey">Clave de API de Gemini</label>
+          <input type="password" id="gKey" placeholder="AIza…" autocomplete="off">
+        </div>
+        <div class="row"><button class="primary" id="gSave">Conectar</button><button class="ghost" id="gForget">Borrar clave</button></div>
+        <div class="field" id="gModelWrap" hidden>
+          <label class="lbl" for="gModel">Modelo</label>
+          <select id="gModel"></select>
+        </div>
+        <p class="status" id="gStatus" role="status"></p>
+        <p class="note">Créala gratis en <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a> con tu cuenta de Google. Se guarda solo en este navegador. En el plan gratuito Google puede usar lo que envías para mejorar sus modelos: no subas datos reales de pacientes ni documentos confidenciales.</p>
+      </details>
+    </div>
+
+    <!-- QUIZ -->
+    <section class="sheet" aria-labelledby="s3">
+      <div class="sheet-head">
+        <div class="step"><b>3</b><h2 id="s3">Practicar</h2></div>
+        <div class="row">
+          <label class="toggle"><input type="checkbox" id="immediate" checked>Corregir al instante</label>
+          <button id="dlOpen">Descargar Word</button>
+        </div>
+      </div>
+      <div id="dlPanel" class="sheet-body" hidden>
+        <div class="dlbox">
+          <strong>Cuestionario imprimible (.docx)</strong>
+          <label class="toggle"><input type="checkbox" id="dlKey" checked>Incluir hoja de respuestas al final</label>
+          <label class="toggle"><input type="checkbox" id="dlHeader" checked>Incluir casillas de nombre, fecha y nota</label>
+          <div class="row"><button class="primary" id="dlGo">Descargar</button><button class="ghost" id="dlClose">Cerrar</button></div>
+          <p class="status" id="dlStatus" role="status"></p>
+        </div>
+      </div>
+      <div id="quiz" style="display:contents"></div>
+    </section>
+  </div>
+</div>
+
+<script>
+"use strict";
+const $ = s => document.querySelector(s);
+const $$ = s => [...document.querySelectorAll(s)];
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const LET = "ABCDEFGHIJ";
+const TYPE_NAME = {mcq:"Opción múltiple", case:"Caso real", match:"Asociar", tf:"V / F", open:"Abierta", cloze:"Completar"};
+const uid = () => Math.random().toString(36).slice(2, 10);
+const shuffle = a => { a = a.slice(); for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
+const pick = a => a[Math.floor(Math.random() * a.length)];
+const clip = (s, n) => s.length > n ? s.slice(0, n - 1).trimEnd() + "…" : s;
+
+/* =================== example content =================== */
+const EXAMPLE_MATERIAL = `Sistemas de producción esbelta (Lean)
+Just in Time (JIT): producir solo lo necesario, en la cantidad necesaria y en el momento necesario. Reduce inventarios y expone problemas ocultos.
+Kanban: sistema de tarjetas que autoriza la producción o el movimiento de material cuando el proceso cliente consume (sistema pull).
+Takt time: tiempo disponible de producción dividido para la demanda del cliente; marca el ritmo al que se debe producir.
+SMED: técnica para reducir el tiempo de cambio de formato separando actividades internas (máquina parada) de externas (máquina funcionando).
+Poka-yoke: dispositivo a prueba de errores que impide o detecta un defecto en el origen.
+Jidoka: autonomación; la máquina o el operario detiene la línea al detectar una anomalía.
+Heijunka: nivelación de la producción en volumen y mezcla de productos.
+Muda: actividad que consume recursos sin agregar valor para el cliente, como sobreproducción, esperas o transporte.
+Kaizen: mejora continua mediante cambios pequeños y frecuentes en los que participan todos los trabajadores.
+5S: método para ordenar el puesto de trabajo con clasificar, ordenar, limpiar, estandarizar y mantener la disciplina.`;
+
+/* =================== state & storage =================== */
+const state = { questions: [], idx: 0, resp: {}, view: "practice", isExample: true, sources: [] };
+const store = {
+  get(k){ try { return JSON.parse(localStorage.getItem(k)); } catch { return null; } },
+  set(k, v){ try { localStorage.setItem(k, JSON.stringify(v)); } catch {} },
+  del(k){ try { localStorage.removeItem(k); } catch {} }
+};
+function persist(){ store.set("ra.quiz", {questions: state.questions, resp: state.resp, idx: state.idx, isExample: state.isExample, view: state.view}); }
+let matTimer;
+function persistMaterial(){ clearTimeout(matTimer); matTimer = setTimeout(() => { store.set("ra.mat", {text: matEl.value, sources: state.sources}); showConcepts(); }, 400); }
+function setStatus(id, msg, err){ const el = $(id); el.innerHTML = msg; el.classList.toggle("err", !!err); }
+
+/* =================== text utilities =================== */
+const STOP = new Set(("el la los las un una unos unas de del al a ante bajo con contra desde durante en entre hacia hasta mediante para por segun sin sobre tras y e ni o u que se su sus lo le les es son fue ser era como mas pero muy ya este esta estos estas ese esa esos esas eso esto aquel cual cuales cuando donde quien porque pues tambien solo hay tiene tienen puede pueden cada otro otra otros otras todo toda todos todas mismo misma sea sean dicho dicha " +
+  "the of and or to in on for with is are was were be been an by as at from that this these those it its into than then which who whom whose can may also not but if their there such").split(" "));
+const normTxt = s => String(s).toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9ñ ]+/g, " ").replace(/\s+/g, " ").trim();
+const keyWords = s => [...new Set(normTxt(s).split(" ").filter(w => w.length > 3 && !STOP.has(w)))];
+function lev(a, b){
+  const m = a.length, n = b.length; if (!m) return n; if (!n) return m;
+  let prev = Array.from({length: n + 1}, (_, j) => j);
+  for (let i = 1; i <= m; i++) { const cur = [i]; for (let j = 1; j <= n; j++) cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1)); prev = cur; }
+  return prev[n];
+}
+function sameAnswer(given, expected){
+  const g = normTxt(given), e = normTxt(expected);
+  if (!g) return false;
+  if (g === e) return true;
+  const tol = e.length <= 5 ? 0 : e.length <= 10 ? 1 : 2;
+  if (lev(g, e) <= tol) return true;
+  // accept the main part of a term like "Just in Time (JIT)" → "jit" or "just in time"
+  const parts = String(expected).split(/[()\/,]/).map(normTxt).filter(p => p.length > 1);
+  return parts.some(p => p === g || (p.length > 5 && lev(g, p) <= 1));
+}
+const CONNECT = new Set("porque que cuando si pero aunque donde mientras cual cuales quien quienes cuyo cuya pues entonces luego asi sino cuanto cuanta tanto mas menos ya no because when which that while if but although where so then whereas".split(" "));
+const GENERIC = new Set("problema problemas objetivo objetivos resultado resultados idea ideas punto tema caso razon solucion pregunta respuesta verdad realidad cosa hecho primero segundo tercero ejemplo esto eso aquello ello importante clave diferencia parte otra otro mismo lo it this that there".split(" "));
+const ABBR = /(?:\b(?:p\.\s?ej|ej|etc|vs|dr|dra|sr|sra|fig|p[áa]g|cap|vol|n[úu]m|aprox|e\.g|i\.e|cf|op|cit|ed|eds)\.|\b[A-ZÁÉÍÓÚ]\.)$/i;
+function splitSentences(t){
+  const out = []; let cur = "";
+  for (const part of String(t).split(/(?<=[.!?…])\s+/)) {
+    cur = cur ? cur + " " + part : part;
+    if (ABBR.test(cur)) continue;
+    out.push(cur.trim()); cur = "";
+  }
+  if (cur.trim()) out.push(cur.trim());
+  return out.filter(Boolean);
+}
+
+/* =================== local engine: rebuild paragraphs cut by PDFs =================== */
+const ITEM_RE = /^(?:[-*•▪●◦·]\s+|\d{1,2}[.)]\s+|[a-z][.)]\s+)/i;
+const COLON_ITEM_RE = /^[^:.;,!?]{2,45}:\s+\S/;
+function toParagraphs(text){
+  const lines = String(text).replace(/\r/g, "").replace(/([a-záéíóúñ])-\n([a-záéíóúñ])/gi, "$1$2").split("\n");
+  const paras = []; let cur = null;
+  const flush = () => { if (cur) paras.push(cur); cur = null; };
+  for (const raw of lines) {
+    const l = raw.replace(/\s+/g, " ").trim();
+    if (!l) { flush(); continue; }
+    if (/^===.*===$/.test(l)) { flush(); paras.push({text: l, header: true, lines: 1}); continue; }
+    if (/^(?:\d{1,4}|p[áa]gina \d+|page \d+|\d+ ?\/ ?\d+)$/i.test(l)) continue; // page numbers
+    const startsItem = ITEM_RE.test(l) || COLON_ITEM_RE.test(l);
+    if (cur) {
+      const prev = cur.last;
+      const prevOpen = !/[.:;!?…]["”»)]?$/.test(prev);
+      const prevLong = prev.length >= 55;
+      const lower = /^[a-záéíóúñü(,;]/.test(l);
+      // a PDF wraps long lines mid-sentence: join them back
+      if ((prevOpen && prevLong) || (prevOpen && lower && !startsItem) || (/[,;]$/.test(prev) && lower)) {
+        cur.text += " " + l; cur.last = l; cur.lines++; continue;
+      }
+    }
+    flush(); cur = {text: l, last: l, lines: 1};
+  }
+  flush();
+  return paras;
+}
+
+/* =================== local engine: concept extraction =================== */
+const cleanTerm = t => String(t).replace(ITEM_RE, "").replace(/^[\s"“«*_'‘]+|[\s"”»*_'’]+$/g, "").replace(/\s+/g, " ").trim();
+function validTerm(t, {needCap = false} = {}){
+  t = cleanTerm(t);
+  const words = t.split(" ");
+  if (t.length < 2 || t.length > 55 || words.length > 6) return null;
+  if (/[,;!?¿¡"“”]/.test(t)) return null;                       // terms don't carry commas
+  if (/^\d+\s+\p{L}/u.test(t)) return null;                     // footnote: "1 Daniel …"
+  if (/\b(?:I{2,3}|IV|Jr|et al|ed|eds)\b\.?/.test(t)) return null;  // bibliographic names
+  if (/\b(19|20)\d{2}\b/.test(t)) return null;                  // years → references
+  if (/^(?:ejemplos?|notas?|tema|unidad|cap[ií]tulo|clase|fecha|example|note|figura|tabla|fuente|referencias?|bibliograf[ií]a|objetivos?|introducci[oó]n|resumen|conclusi[oó]n(?:es)?|ver|véase|see)\b/i.test(t)) return null;
+  const nw = words.map(normTxt).filter(Boolean);
+  if (!nw.length) return null;
+  if (nw.some(w => CONNECT.has(w))) return null;                 // "La nave dobla porque…"
+  if (STOP.has(nw[0]) || STOP.has(nw[nw.length - 1])) return null;
+  if (nw.length === 1 && GENERIC.has(nw[0])) return null;
+  if (nw.every(w => GENERIC.has(w) || STOP.has(w))) return null;
+  if (nw.filter(w => STOP.has(w)).length > Math.floor(nw.length / 2)) return null;
+  if (needCap && !/^[\p{Lu}\d]/u.test(t)) return null;
+  return t;
+}
+function validDef(d, term){
+  d = String(d).replace(/\s+/g, " ").trim().replace(/^[-–—:=]\s*/, "");
+  if (!d) return null;
+  const first = normTxt(d.split(" ")[0]);
+  if (CONNECT.has(first)) return null;                           // "que nadie…": not a definition
+  let out = "";
+  for (const s of splitSentences(d)) { if (out && (out + " " + s).length > 300) break; out = out ? out + " " + s : s; }
+  if (out.length > 340) return null;                             // a whole paragraph: not usable as an option
+  const w = out.split(" ");
+  if (w.length < 5) return null;
+  const last = normTxt(w[w.length - 1]);
+  if (!last || STOP.has(last) || CONNECT.has(last)) return null; // cut mid-sentence
+  if (/\b(?:I{2,3}|et al)\b/.test(out) && /\b(19|20)\d{2}\b/.test(out)) return null; // a reference
+  if (!/[.!?…)"”»]$/.test(out)) out += ".";
+  out = out[0].toUpperCase() + out.slice(1);
+  if (term && normTxt(out) === normTxt(term)) return null;
+  return out;
+}
+const DEF_VERBS = /^(?:(?:el|la|los|las|un|una|the|an?)\s+)?(.{2,50}?)\s+(?:es|son|se define como|se denomina|se conoce como|consiste en|se refiere a|significa|is|are|refers to|is defined as|means)\s+(.+)$/i;
+function extractConcepts(text){
+  const out = [], seen = new Set();
+  const excluded = new Set(store.get("ra.excluded") || []);
+  const add = (term, def, pos) => {
+    const t = validTerm(term.t, {needCap: term.needCap}); if (!t) return;
+    const d = validDef(def, t); if (!d) return;
+    const k = normTxt(t); if (seen.has(k)) return; seen.add(k);
+    out.push({term: t[0].toUpperCase() + t.slice(1), def: d, pos, off: excluded.has(k)});
+  };
+  toParagraphs(text).forEach((p, pos) => {
+    if (p.header) return;
+    const body = p.text.replace(ITEM_RE, "");
+    // A) "Concepto: definición" / "Concepto – definición" at the start of an item
+    const m = body.match(/^([^:=.;!?]{2,55}?)\s*(?::|\s[—–-]\s|\s=\s)\s*(.+)$/);
+    if (m) { add({t: m[1], needCap: p.lines > 1}, m[2], pos); return; }
+    // B) "El X es …" at the start of a sentence
+    for (const sent of splitSentences(body)) {
+      const k = sent.match(DEF_VERBS);
+      if (k) add({t: k[1], needCap: !/^(?:el|la|los|las|un|una|the|an?)\s/i.test(sent)}, k[2], pos);
+    }
+  });
+  return out;
+}
+const activeConcepts = text => extractConcepts(text).filter(c => !c.off);
+const maskTerm = (def, term) => {
+  let d = def;
+  const parts = [term, ...term.split(/[()]/)].map(p => p.trim()).filter(p => p.length > 2).sort((a, b) => b.length - a.length);
+  for (const p of parts) d = d.replace(new RegExp(p.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi"), "____");
+  return d;
+};
+function showConcepts(){
+  const all = extractConcepts(matEl.value);
+  const on = all.filter(c => !c.off);
+  const box = $("#concepts");
+  if (!matEl.value.trim()) { box.innerHTML = ""; return; }
+  if (!all.length) {
+    box.innerHTML = `<span>No encontré conceptos con definición completa. Sin internet solo puedo preguntar sobre apuntes escritos como <b>Concepto: definición</b>. Si tu material es texto corrido (un libro o un PDF), conecta Gemini y pulsa <b>Crear glosario</b>.</span>`;
+    return;
+  }
+  box.innerHTML = `<b>${on.length}</b><span>conceptos listos para preguntas sin internet${on.length < 4 ? " (se necesitan al menos 4 para opción múltiple y asociación)" : ""}. <button class="ghost" id="revBtn" type="button">Revisar</button></span>
+    <div class="rev" id="rev" ${box.dataset.open ? "" : "hidden"}>${all.map(c => `<label class="revrow ${c.off ? "off" : ""}"><input type="checkbox" data-term="${esc(normTxt(c.term))}" ${c.off ? "" : "checked"}><span><b>${esc(c.term)}</b>: ${esc(c.def)}</span></label>`).join("")}
+    <p class="note">Desmarca lo que no sea un concepto real. Para corregir una definición, edítala en tus apuntes.</p></div>`;
+  $("#revBtn").onclick = () => { box.dataset.open = box.dataset.open ? "" : "1"; $("#rev").hidden = !box.dataset.open; };
+  box.querySelectorAll("[data-term]").forEach(cb => cb.onchange = () => {
+    const ex = new Set(store.get("ra.excluded") || []);
+    cb.checked ? ex.delete(cb.dataset.term) : ex.add(cb.dataset.term);
+    store.set("ra.excluded", [...ex]); showConcepts();
+  });
+}
+
+/* =================== local engine: question builders =================== */
+// Plausible distractors: concepts from the same part of the notes, with similar length.
+function near(all, c, n, field){
+  const pool = all.filter(x => x !== c && normTxt(x[field]) !== normTxt(c[field]));
+  const len = c[field].length;
+  pool.sort((a, b) => (Math.abs(a.pos - c.pos) + Math.abs(a[field].length - len) / 25) - (Math.abs(b.pos - c.pos) + Math.abs(b[field].length - len) / 25));
+  return shuffle(pool.slice(0, Math.max(n, Math.min(pool.length, n + 2)))).slice(0, n);
+}
+const L = {
+  mcq(c, all){
+    if (all.length < 4) return null;
+    const ds = near(all, c, 3, Math.random() < 0.55 ? "term" : "def");
+    if (ds.length < 3) return null;
+    if (ds[0].term.length && Math.random() < 0.55) {
+      return {type: "mcq", topic: c.term, caseLabel: "Definición", case: maskTerm(c.def, c.term), stem: "¿A qué concepto corresponde esta definición?", options: [c.term, ...ds.map(x => x.term)], answer: 0, explanation: `${c.term}: ${c.def}`};
+    }
+    return {type: "mcq", topic: c.term, stem: `¿Cuál es la definición correcta de “${c.term}”?`, options: [c, ...ds].map(x => maskTerm(x.def, x.term)), answer: 0, explanation: `${c.term}: ${c.def}`};
+  },
+  tf(c, all){
+    if (all.length < 3) return null;
+    const truthy = Math.random() < 0.5;
+    const other = truthy ? null : near(all, c, 1, "def")[0];
+    if (!truthy && !other) return null;
+    const def = truthy ? c.def : maskTerm(other.def, other.term);
+    return {type: "tf", topic: c.term, caseLabel: "Afirmación", case: `${c.term}: ${def}`, stem: "¿Esta definición es verdadera o falsa?", options: ["Verdadero", "Falso"], answer: truthy ? 0 : 1,
+      explanation: truthy ? `Verdadero. ${c.term}: ${c.def}` : `Falso. Esa definición corresponde a “${other.term}”. ${c.term}: ${c.def}`};
+  },
+  match(c, all){
+    if (all.length < 4) return null;
+    const set = [c, ...near(all, c, Math.min(4, all.length - 1), "term")];
+    return {type: "match", topic: "Varios", stem: "Asocia cada concepto con su definición.", pairs: set.map(x => ({left: x.term, right: maskTerm(x.def, x.term)})), explanation: set.map(x => `${x.term}: ${x.def}`).join(" · ")};
+  },
+  open(c){
+    const stems = [`Explica con tus palabras qué es “${c.term}”.`, `Define “${c.term}” y da un ejemplo de cómo se aplica.`, `¿Qué es “${c.term}” y para qué sirve?`];
+    return {type: "open", topic: c.term, stem: pick(stems), model: c.def, explanation: c.def};
+  },
+  cloze(c, all, sentences){
+    const head = c.term.split(/[()]/)[0].trim();
+    const re = new RegExp(`(^|[^\\p{L}])${head.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?=[^\\p{L}]|$)`, "iu");
+    const defKey = normTxt(c.def).slice(0, 30);
+    const s = sentences.find(x => x.length >= 50 && x.length <= 260 && re.test(x) && !normTxt(x).includes(defKey) && !/^[^:]{2,55}:\s/.test(x) && validDef(x));
+    if (s) return {type: "cloze", topic: c.term, caseLabel: "Completa la oración", case: maskTerm(s, c.term), stem: "¿Qué concepto va en el espacio en blanco?", answerText: c.term, explanation: s};
+    return {type: "cloze", topic: c.term, caseLabel: "Definición", case: maskTerm(c.def, c.term), stem: "Escribe el nombre del concepto que corresponde a esta definición.", answerText: c.term, explanation: `${c.term}: ${c.def}`};
+  }
+};
+function localGenerate(text, plan){
+  const all = activeConcepts(text);
+  const sentences = toParagraphs(text).filter(p => !p.header).flatMap(p => splitSentences(p.text));
+  const out = []; const used = new Set(); const usedStems = new Set();
+  if (!all.length) return out;
+  let order = shuffle(all), k = 0;
+  for (const type of plan) {
+    let q = null;
+    for (let tries = 0; tries < all.length * 2 && !q; tries++) {
+      const c = order[k++ % order.length];
+      if (k % order.length === 0) order = shuffle(all);
+      const key = type + "|" + c.term; if (used.has(key)) continue;
+      const cand = L[type] ? L[type](c, all, sentences) : null;
+      if (cand && !usedStems.has(cand.stem + cand.case)) { q = cand; used.add(key); usedStems.add(cand.stem + cand.case); }
+    }
+    if (q) out.push(q);
+  }
+  return out;
+}
+
+/* =================== normalization =================== */
+function norm(q){
+  if (!q || typeof q !== "object") return null;
+  const type = ["mcq","case","match","tf","open","cloze"].includes(q.type) ? q.type : "mcq";
+  const o = {id: uid(), type, topic: String(q.topic || ""), case: String(q.case || ""), caseLabel: String(q.caseLabel || (type === "case" ? "Caso" : "")), stem: String(q.stem || "").trim(), explanation: String(q.explanation || "")};
+  if (!o.stem) return null;
+  if (type === "match") {
+    const pairs = (Array.isArray(q.pairs) ? q.pairs : []).filter(p => p && p.left && p.right).map(p => ({left: String(p.left), right: String(p.right)}));
+    if (pairs.length < 2) return null;
+    o.pairs = pairs.slice(0, 8); o.order = shuffle(o.pairs.map((_, i) => i));
+    return o;
+  }
+  if (type === "open") { o.model = String(q.model || q.explanation || ""); return o.model ? o : null; }
+  if (type === "cloze") { o.answerText = String(q.answerText || q.answer || ""); return o.answerText ? o : null; }
+  let opts = (Array.isArray(q.options) ? q.options : []).map(String).filter(Boolean);
+  let ans = Number(q.answer);
+  if (opts.length < 2 || !Number.isInteger(ans) || ans < 0 || ans >= opts.length) return null;
+  if (type !== "tf") { const idx = shuffle(opts.map((_, i) => i)); opts = idx.map(i => opts[i]); ans = idx.indexOf(ans); }
+  o.options = opts; o.answer = ans;
+  return o;
+}
+
+/* =================== Gemini (optional) =================== */
+const G = { key: null, model: null };
+const GBASE = "https://generativelanguage.googleapis.com/v1beta/";
+function gReady(){ return !!(G.key && G.model); }
+function gErr(status, body){
+  const msg = (body && body.error && (body.error.message || body.error.status)) || "";
+  if (/api key not valid|API_KEY_INVALID|permission|unauthenticated/i.test(msg) || status === 401 || status === 403) return {code: "bad_key"};
+  if (status === 429) return {code: "rate_limited"};
+  if (status === 404) return {code: "bad_model"};
+  if (status === 400 && /token|too large|exceeds/i.test(msg)) return {code: "prompt_too_large"};
+  return {code: "upstream_error", detail: msg};
+}
+async function gFetch(path, opts = {}){
+  let res;
+  try { res = await fetch(GBASE + path, {...opts, headers: {"content-type": "application/json", "x-goog-api-key": G.key, ...(opts.headers || {})}}); }
+  catch (e) { throw {code: e && e.name === "AbortError" ? "cancelled" : "network"}; }
+  let body = null; try { body = await res.json(); } catch {}
+  if (!res.ok) throw gErr(res.status, body);
+  return body;
+}
+async function blobToB64(blob){
+  const bmp = await createImageBitmap(blob);
+  const scale = Math.min(1, 1600 / Math.max(bmp.width, bmp.height));
+  const c = document.createElement("canvas"); c.width = Math.round(bmp.width * scale); c.height = Math.round(bmp.height * scale);
+  c.getContext("2d").drawImage(bmp, 0, 0, c.width, c.height);
+  const out = await new Promise(r => c.toBlob(r, "image/jpeg", 0.85));
+  const buf = new Uint8Array(await out.arrayBuffer());
+  let s = ""; for (let i = 0; i < buf.length; i += 0x8000) s += String.fromCharCode.apply(null, buf.subarray(i, i + 0x8000));
+  return btoa(s);
+}
+async function gemini(text, {images = [], json = false, signal} = {}){
+  if (!gReady()) throw {code: "no_gemini"};
+  const parts = [{text}];
+  for (const b of images) parts.push({inline_data: {mime_type: "image/jpeg", data: await blobToB64(b)}});
+  const body = {contents: [{role: "user", parts}], generationConfig: {temperature: json ? 0.9 : 0.3, ...(json ? {responseMimeType: "application/json"} : {})}};
+  const r = await gFetch(`${G.model}:generateContent`, {method: "POST", body: JSON.stringify(body), signal});
+  const cand = r && r.candidates && r.candidates[0];
+  if (!cand) throw {code: (r && r.promptFeedback && r.promptFeedback.blockReason) ? "refused" : "empty"};
+  if (cand.finishReason === "SAFETY" || cand.finishReason === "PROHIBITED_CONTENT") throw {code: "refused"};
+  const out = ((cand.content && cand.content.parts) || []).filter(p => !p.thought).map(p => p.text || "").join("");
+  if (!out.trim()) throw {code: "empty"};
+  if (!json) return out;
+  const v = parseLoose(out);
+  if (v === undefined) throw {code: "invalid_json"};
+  return v;
+}
+function parseLoose(text){
+  const tryParse = s => { try { return JSON.parse(s); } catch { return undefined; } };
+  let v = tryParse(text.trim());
+  if (v === undefined) { const m = text.match(/```(?:json)?\s*([\s\S]*?)```/); if (m) v = tryParse(m[1]); }
+  if (v === undefined) { const a = text.search(/[\[{]/), b = Math.max(text.lastIndexOf("]"), text.lastIndexOf("}")); if (a >= 0 && b > a) v = tryParse(text.slice(a, b + 1)); }
+  return v;
+}
+function errText(e){
+  switch (e && e.code) {
+    case "no_gemini": return "Esto necesita Gemini. Conéctalo en el panel “Gemini (opcional, gratis)”.";
+    case "bad_key": return "La clave de Gemini no es válida o no tiene permiso. Revísala en aistudio.google.com/apikey.";
+    case "bad_model": return "Ese modelo de Gemini ya no está disponible. Elige otro en el panel de Gemini.";
+    case "rate_limited": return "Llegaste al límite gratuito de Gemini por ahora. Espera unos minutos (el límite diario se reinicia cada día) o genera sin Gemini.";
+    case "prompt_too_large": return "El material es demasiado largo para una sola vez. Recórtalo o usa “Enfócate en”.";
+    case "invalid_json": case "empty": return "Gemini devolvió una respuesta incompleta. Pulsa Generar otra vez o pide menos preguntas.";
+    case "refused": return "Gemini no quiso procesar este contenido. Revisa el material.";
+    case "network": return "No hay conexión a internet.";
+    case "cancelled": return "Detenido.";
+    default: return "Gemini tuvo un fallo. Inténtalo de nuevo." + (e && e.detail ? ` (${esc(clip(e.detail, 120))})` : "");
+  }
+}
+async function gConnect(key, preferred){
+  G.key = key; G.model = null;
+  setStatus("#gStatus", `<span class="spinner"></span>Conectando…`);
+  try {
+    const r = await gFetch("models?pageSize=1000");
+    const ms = (r.models || []).filter(m => (m.supportedGenerationMethods || []).includes("generateContent") && /gemini/i.test(m.name) && /flash/i.test(m.name) && !/(image|tts|audio|live|embed|vision|robotics|computer|native)/i.test(m.name));
+    if (!ms.length) throw {code: "bad_model"};
+    const ver = n => { const v = n.match(/gemini-(\d+(?:\.\d+)?)/); return v ? parseFloat(v[1]) : 0; };
+    ms.sort((a, b) => (ver(b.name) - ver(a.name)) || (/lite/.test(a.name) - /lite/.test(b.name)) || (/preview|exp/.test(a.name) - /preview|exp/.test(b.name)));
+    $("#gModel").innerHTML = ms.map(m => `<option value="${esc(m.name)}">${esc(m.displayName || m.name.replace("models/", ""))}</option>`).join("");
+    const keep = preferred && ms.find(m => m.name === preferred);
+    G.model = keep ? preferred : ms[0].name; $("#gModel").value = G.model;
+    $("#gModelWrap").hidden = false;
+    $("#gState").textContent = "Conectado"; $("#gState").classList.add("on");
+    store.set("ra.gkey", key); store.set("ra.gmodel", G.model);
+    setStatus("#gStatus", "Gemini conectado. Ya puedes generar casos reales.");
+    if (store.get("ra.allgem") !== false) $("#allGem").checked = true;
+  } catch (e) {
+    G.key = null; G.model = null; $("#gState").textContent = "Sin conectar"; $("#gState").classList.remove("on");
+    setStatus("#gStatus", errText(e), true);
+  }
+}
+$("#gSave").onclick = () => { const k = $("#gKey").value.trim(); if (k.length < 20) return setStatus("#gStatus", "Pega la clave completa (suele empezar con AIza).", true); gConnect(k); };
+$("#gModel").onchange = () => { G.model = $("#gModel").value; store.set("ra.gmodel", G.model); };
+$("#gForget").onclick = () => {
+  store.del("ra.gkey"); store.del("ra.gmodel"); G.key = G.model = null; $("#gKey").value = ""; $("#gModelWrap").hidden = true;
+  $("#gState").textContent = "Sin conectar"; $("#gState").classList.remove("on"); setStatus("#gStatus", "Clave borrada de este navegador.");
+};
+
+/* =================== material: files =================== */
+const matEl = $("#material");
+function updateChars(){ $("#chars").textContent = matEl.value.length.toLocaleString("es") + " caracteres"; }
+matEl.addEventListener("input", () => { updateChars(); persistMaterial(); });
+function renderSources(){ $("#sources").innerHTML = state.sources.map(s => `<div class="src"><span>${esc(s.name)}</span><span class="mono">${esc(s.info)}</span></div>`).join(""); }
+function appendMaterial(name, text){
+  text = (text || "").replace(/\n{3,}/g, "\n\n").trim(); if (!text) return;
+  const cur = matEl.value.trim();
+  matEl.value = (cur ? cur + "\n\n" : "") + `=== ${name} ===\n` + text;
+  updateChars(); persistMaterial();
+}
+async function extractPdf(buf){
+  const pdf = await pdfjsLib.getDocument({data: buf}).promise;
+  const pages = [];
+  for (let i = 1; i <= pdf.numPages; i++) {
+    const tc = await (await pdf.getPage(i)).getTextContent();
+    pages.push(tc.items.map(it => it.str + (it.hasEOL ? "\n" : " ")).join(""));
+  }
+  return {pdf, text: pages.join("\n\n"), numPages: pdf.numPages};
+}
+async function pdfPagesToBlobs(pdf, max){
+  const out = [];
+  for (let i = 1; i <= Math.min(pdf.numPages, max); i++) {
+    const pg = await pdf.getPage(i); const vp = pg.getViewport({scale: 1.6});
+    const c = document.createElement("canvas"); c.width = vp.width; c.height = vp.height;
+    await pg.render({canvasContext: c.getContext("2d"), viewport: vp}).promise;
+    out.push(await new Promise(r => c.toBlob(r, "image/jpeg", 0.85)));
+  }
+  return out;
+}
+async function extractPptx(buf){
+  const zip = await JSZip.loadAsync(buf);
+  const num = n => +n.match(/(\d+)\.xml$/)[1];
+  const names = Object.keys(zip.files).filter(n => /^ppt\/slides\/slide\d+\.xml$/.test(n)).sort((a, b) => num(a) - num(b));
+  const ta = document.createElement("textarea"); const out = [];
+  for (const n of names) {
+    const xml = await zip.file(n).async("string");
+    const paras = xml.split(/<\/a:p>/).map(p => [...p.matchAll(/<a:t>([^<]*)<\/a:t>/g)].map(m => m[1]).join("")).filter(Boolean);
+    ta.innerHTML = paras.join("\n"); out.push(ta.value);
+  }
+  return out.join("\n\n");
+}
+async function ocrImages(blobs, label){
+  let all = "";
+  for (let i = 0; i < blobs.length; i += 8) {
+    setStatus("#matStatus", `<span class="spinner"></span>Leyendo ${esc(label)} con Gemini (${Math.min(i + 8, blobs.length)}/${blobs.length})…`);
+    const t = await gemini("Estas imágenes son apuntes, diapositivas, pizarras o páginas de un libro de un estudiante universitario. Transcribe fielmente TODO el texto en su idioma original, en orden de lectura. Describe brevemente tablas, fórmulas y diagramas relevantes. Devuelve solo la transcripción.", {images: blobs.slice(i, i + 8)});
+    all += (all ? "\n\n" : "") + t;
+  }
+  return all;
+}
+async function handleFiles(files){
+  for (const f of files) {
+    const ext = (f.name.split(".").pop() || "").toLowerCase();
+    try {
+      setStatus("#matStatus", `<span class="spinner"></span>Procesando ${esc(f.name)}…`);
+      let text = "";
+      if (["txt","md","csv"].includes(ext)) text = await f.text();
+      else if (ext === "docx") text = (await mammoth.extractRawText({arrayBuffer: await f.arrayBuffer()})).value;
+      else if (ext === "pptx") text = await extractPptx(await f.arrayBuffer());
+      else if (ext === "pdf") {
+        const r = await extractPdf(await f.arrayBuffer());
+        text = r.text;
+        if (text.replace(/\s/g, "").length < r.numPages * 40) {
+          if (!gReady()) { setStatus("#matStatus", `${esc(f.name)} parece escaneado (sin texto). Conecta Gemini para leerlo, o pega el texto.`, true); continue; }
+          text = await ocrImages(await pdfPagesToBlobs(r.pdf, 30), f.name);
+        }
+      } else if (f.type.startsWith("image/")) {
+        if (!gReady()) { setStatus("#matStatus", `Para leer fotos (${esc(f.name)}) conecta Gemini, o escribe el contenido.`, true); continue; }
+        text = await ocrImages([f], f.name);
+      } else { setStatus("#matStatus", `No reconozco el formato de ${esc(f.name)}. Usa PDF, Word, PowerPoint, texto o imagen.`, true); continue; }
+      appendMaterial(f.name, text);
+      state.sources.push({name: f.name, info: text.length.toLocaleString("es") + " car."});
+      renderSources(); persistMaterial();
+      setStatus("#matStatus", `Listo: ${esc(f.name)} añadido.`);
+    } catch (e) {
+      setStatus("#matStatus", e && e.code ? errText(e) : `No pude leer ${esc(f.name)}. Si es un archivo protegido, copia y pega el texto.`, true);
+    }
+  }
+}
+const fileIn = $("#file"), drop = $("#drop");
+fileIn.addEventListener("change", () => { handleFiles([...fileIn.files]); fileIn.value = ""; });
+["dragenter","dragover"].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.add("over"); }));
+["dragleave","drop"].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove("over"); }));
+drop.addEventListener("drop", e => handleFiles([...e.dataTransfer.files]));
+let beforeGloss = null;
+$("#gloss").onclick = async () => {
+  const src = matEl.value.trim();
+  if (src.length < 60) return setStatus("#matStatus", "Primero sube o pega tu material.", true);
+  if (!gReady()) { $("#gemPanel").open = true; return setStatus("#matStatus", "Crear el glosario usa Gemini (gratis). Conéctalo en el panel de Gemini, abajo.", true); }
+  ctl = new AbortController(); busy(true);
+  setStatus("#matStatus", `<span class="spinner"></span>Gemini está leyendo tu material y armando el glosario…`);
+  try {
+    const t = await gemini(`Del siguiente material de estudio, extrae entre 15 y 40 conceptos clave que un profesor evaluaría (teorías, principios, leyes, procesos, herramientas, términos técnicos). No incluyas autores, libros, fechas ni ejemplos anecdóticos como conceptos.
+Escribe un concepto por línea, con este formato exacto:
+Nombre del concepto: definición completa en 1 o 2 oraciones, que se entienda sola y no repita el nombre del concepto.
+Escribe en el mismo idioma del material. Devuelve solo las líneas del glosario, sin títulos, viñetas ni numeración.
+
+MATERIAL:
+"""
+${src.slice(0, 120000)}
+"""`, {signal: ctl.signal});
+    const lines = t.split("\n").map(l => l.replace(/^\s*(?:[-*•]|\d+[.)])\s*/, "").replace(/\*\*/g, "").trim()).filter(l => /^[^:]{2,60}:\s+\S/.test(l));
+    if (lines.length < 3) throw {code: "empty"};
+    beforeGloss = matEl.value;
+    matEl.value = "=== Glosario ===\n" + lines.join("\n") + "\n\n" + src;
+    updateChars(); persistMaterial(); showConcepts();
+    $("#undoGloss").hidden = false;
+    setStatus("#matStatus", `Glosario con ${lines.length} conceptos agregado al inicio de tus apuntes. Desde ahora puedes generar preguntas sin internet todas las veces que quieras.`);
+  } catch (e) { setStatus("#matStatus", errText(e), e.code !== "cancelled"); }
+  finally { busy(false); }
+};
+$("#undoGloss").onclick = () => { if (beforeGloss == null) return; matEl.value = beforeGloss; beforeGloss = null; updateChars(); persistMaterial(); showConcepts(); $("#undoGloss").hidden = true; setStatus("#matStatus", "Glosario quitado."); };
+$("#allGem").addEventListener("change", () => store.set("ra.allgem", $("#allGem").checked));
+$("#clearMat").onclick = () => { matEl.value = ""; state.sources = []; renderSources(); updateChars(); persistMaterial(); setStatus("#matStatus", "Material vaciado."); };
+
+/* =================== translation =================== */
+let ctl = null;
+function chunkText(t, size){
+  const paras = t.split(/\n{2,}/); const out = []; let cur = "";
+  for (const p of paras) { if ((cur + "\n\n" + p).length > size && cur) { out.push(cur); cur = p; } else cur = cur ? cur + "\n\n" + p : p; }
+  if (cur) out.push(cur); return out;
+}
+async function translate(target){
+  const src = matEl.value.trim();
+  if (!src) return setStatus("#matStatus", "Primero sube o pega tu material.", true);
+  if (!gReady()) {
+    const tl = target === "español" ? "es" : "en";
+    return setStatus("#matStatus", `La traducción usa Gemini. Sin Gemini puedes traducir gratis en <a href="https://translate.google.com/?sl=auto&tl=${tl}&op=docs" target="_blank" rel="noopener">Google Traductor</a> (sube el documento o pega el texto) y pegar el resultado aquí.`);
+  }
+  const chunks = chunkText(src, 12000), done = [];
+  ctl = new AbortController(); busy(true);
+  try {
+    for (let i = 0; i < chunks.length; i++) {
+      setStatus("#matStatus", `<span class="spinner"></span>Traduciendo al ${target} (${i + 1}/${chunks.length})…`);
+      const t = await gemini(`Traduce al ${target} el siguiente texto académico. Conserva la estructura, encabezados (incluidas líneas "=== ... ==="), el formato "Concepto: definición", listas, fórmulas y números. Usa la terminología técnica correcta del área. Si una parte ya está en ${target}, déjala igual. Devuelve solo la traducción.\n\n"""\n${chunks[i]}\n"""`, {signal: ctl.signal});
+      done.push(t.trim());
+      matEl.value = [...done, ...chunks.slice(i + 1)].join("\n\n"); updateChars();
+    }
+    persistMaterial(); setStatus("#matStatus", `Material traducido al ${target}.`);
+  } catch (e) { setStatus("#matStatus", errText(e), e.code !== "cancelled"); }
+  finally { busy(false); }
+}
+$("#trEs").onclick = () => translate("español");
+$("#trEn").onclick = () => translate("inglés");
+
+/* =================== config & generation =================== */
+const countIn = $("#count");
+function onRange(){
+  const [a, b] = $("input[name=range]:checked").value.split("-").map(Number);
+  countIn.min = a; countIn.max = b; countIn.value = b; $("#countOut").textContent = b;
+}
+$$("input[name=range]").forEach(r => r.addEventListener("change", onRange));
+countIn.addEventListener("input", () => $("#countOut").textContent = countIn.value);
+function busy(on){ $("#stop").hidden = !on; ["#gen","#trEs","#trEn","#file","#gloss"].forEach(s => $(s).disabled = on); }
+$("#stop").onclick = () => ctl && ctl.abort();
+
+const AREA_TXT = {
+  auto: "Deduce el área del material y crea casos propios de esa disciplina.",
+  medicina: "Área: medicina y ciencias de la salud. Los casos son CASOS CLÍNICOS ficticios: paciente con edad y sexo, motivo de consulta, antecedentes, signos vitales, examen físico y, si aplica, laboratorio o imagen. Se pregunta a qué diagnóstico, mecanismo, estructura, fármaco o conducta corresponde.",
+  ingenieria: "Área: ingeniería e industria. Los casos son problemas reales de plantas, procesos, mantenimiento, calidad o diseño, con datos numéricos concretos. Se pregunta qué concepto, herramienta, falla o decisión corresponde.",
+  ambiental: "Área: ingeniería ambiental. Los casos son situaciones reales: tratamiento de aguas, emisiones, residuos, hidrología, evaluación de impacto o normativa, con datos medidos. Se pregunta qué concepto, proceso o medida corresponde.",
+  administracion: "Área: administración e ingeniería de la producción. Los casos son situaciones de empresas: operaciones, inventarios, calidad, logística, costos o talento humano, con cifras. Se pregunta qué concepto, herramienta o decisión corresponde.",
+  ciencias: "Área: ciencias básicas. Los casos son experimentos, observaciones de laboratorio o fenómenos cotidianos. Se pregunta qué principio, ley o mecanismo explica lo observado.",
+  derecho: "Área: derecho. Los casos son situaciones de hecho con partes y circunstancias. Se pregunta qué figura, norma o consecuencia jurídica corresponde."
+};
+const DIFF_TXT = {
+  basica: "Dificultad básica: recordar y comprender definiciones.",
+  intermedia: "Dificultad intermedia: aplicar conceptos a situaciones nuevas; distractores plausibles.",
+  avanzada: "Dificultad avanzada: análisis e integración de varios temas en un mismo caso, datos que hay que interpretar o calcular, y distractores muy cercanos."
+};
+function buildPrompt(material, counts, area, diff, lang, focus, avoid){
+  const want = Object.entries(counts).filter(([, n]) => n > 0).map(([t, n]) => `${n} de tipo "${t}"`).join(", ");
+  return `Eres un profesor universitario experto en diseñar evaluaciones exigentes.
+
+MATERIAL DE ESTUDIO DEL ESTUDIANTE:
+"""
+${material}
+"""
+
+TAREA: escribe preguntas en ${lang} sobre los conceptos de este material: ${want}.
+${AREA_TXT[area]}
+${DIFF_TXT[diff]}
+${focus ? "Prioriza estos temas: " + focus + "." : "Cubre la mayor variedad posible de temas del material."}
+Puedes usar conocimiento del área para construir casos realistas, pero el concepto evaluado debe estar en el material.
+
+TIPOS:
+- "case": caso real o ejemplo aplicado. Escenario completo (3-6 oraciones con datos concretos) en "case"; en "stem" la pregunta (p. ej. "¿A qué corresponde?", "¿Cuál es el diagnóstico más probable?", "¿Qué herramienta resuelve el problema?"). 4 opciones en "options", índice de la correcta en "answer".
+- "mcq": opción múltiple, 4 opciones, una correcta, distractores plausibles, sin "todas las anteriores".
+- "match": asociar 4 a 6 conceptos con su definición o situación. "pairs": [{"left": concepto, "right": definición o situación}]. "stem" con la instrucción.
+- "tf": afirmación en "stem"; "options": ["Verdadero","Falso"] (o ["True","False"] en inglés); "answer" 0 o 1.
+- "open": pregunta abierta de desarrollo en "stem"; respuesta modelo completa (3-5 oraciones) en "model".
+- "cloze": oración del tema con un espacio "____" en "case"; en "stem" la instrucción; la palabra o término exacto que falta en "answerText".
+${avoid.length ? "\nNO repitas estas preguntas ya hechas:\n- " + avoid.join("\n- ") + "\n" : ""}
+REGLAS DE CALIDAD (obligatorias):
+- Cada enunciado debe ser completo, claro y entenderse sin tener el material delante. Nada de frases cortadas.
+- Pregunta por ideas, conceptos, mecanismos y aplicaciones. NO preguntes por autores, años, títulos de libros, números de página ni referencias bibliográficas.
+- La respuesta no debe poder adivinarse por sentido común ni por pistas del enunciado: no repitas en el enunciado palabras de la opción correcta.
+- Todas las opciones deben ser del mismo tipo (todas conceptos, o todas definiciones), de longitud y estilo parecidos, y plausibles para alguien que no estudió. La correcta no debe ser siempre la más larga.
+- Varía la posición de la respuesta correcta.
+En "explanation" (2-3 oraciones) di por qué la respuesta es correcta y por qué fallan los distractores principales.
+
+Responde SOLO con un array JSON con este formato:
+[{"type":"case","topic":"tema corto","case":"escenario...","stem":"pregunta...","options":["...","...","...","..."],"answer":2,"explanation":"...","pairs":[],"model":"","answerText":""}]`;
+}
+
+async function generate(){
+  setStatus("#genStatus", "");
+  const material = matEl.value.trim();
+  if (material.length < 60) return setStatus("#genStatus", "Agrega material (al menos un párrafo) en el paso 1.", true);
+  const types = $$("input[name=type]:checked").map(i => i.value);
+  if (!types.length) return setStatus("#genStatus", "Elige al menos un tipo de pregunta.", true);
+  const N = +countIn.value;
+  const plan = shuffle(Array.from({length: N}, (_, i) => types[i % types.length]));
+  const useGemAll = $("#allGem").checked && gReady();
+  let gemPlan = plan.filter(t => useGemAll || t === "case");
+  const localPlan = plan.filter(t => !(useGemAll || t === "case"));
+  if (gemPlan.length && !gReady()) {
+    setStatus("#genStatus", "Los casos reales necesitan Gemini. Genero el resto sin él; conecta Gemini abajo para sumar casos.", true);
+    $("#gemPanel").open = true;
+    gemPlan = [];
+  }
+  const local = localPlan.length ? localGenerate(material, localPlan).map(norm).filter(Boolean) : [];
+  if (!gemPlan.length) {
+    if (!local.length) {
+      const n = activeConcepts(material).length;
+      return setStatus("#genStatus", (n
+        ? `Solo encontré ${n} concepto(s) con definición completa; hacen falta al menos 4 para preguntas de calidad.`
+        : "Tu material es texto corrido y sin internet no puedo sacar preguntas con sentido de él.")
+        + (gReady() ? " Pulsa <b>Crear glosario con Gemini</b> en el paso 1 o marca “Generar todos los tipos con Gemini”." : " Conecta Gemini (gratis) y pulsa <b>Crear glosario</b>, o escribe tus apuntes como “Concepto: definición”, uno por línea."), true);
+    }
+    startQuiz(shuffle(local), false);
+    const short = N - local.length;
+    if (!$("#genStatus").classList.contains("err")) setStatus("#genStatus", `${local.length} preguntas listas, generadas sin internet.` + (short > 0 ? ` ${short === 1 ? "Faltó 1 pregunta" : `Faltaron ${short} preguntas`} porque no hay suficientes conceptos distintos; agrega más o usa Gemini.` : ""));
+    return;
+  }
+  // hybrid: local ones first so the student can start, then Gemini adds the rest
+  const all = local.slice();
+  if (all.length) startQuiz(all.slice(), false);
+  const mat = material.length > 120000 ? material.slice(0, 120000) : material;
+  ctl = new AbortController(); busy(true);
+  let made = 0;
+  try {
+    for (let b = 0; b < gemPlan.length; b += 10) {
+      const slice = gemPlan.slice(b, b + 10); const counts = {};
+      slice.forEach(t => counts[t] = (counts[t] || 0) + 1);
+      setStatus("#genStatus", `<span class="spinner"></span>${all.length ? all.length + " listas. " : ""}Gemini está creando ${slice.length} más…`);
+      const res = await gemini(buildPrompt(mat, counts, $("#area").value, $("#diff").value, $("#lang").value, $("#focus").value.trim(), all.map(q => clip(q.stem, 110))), {json: true, signal: ctl.signal});
+      const got = (Array.isArray(res) ? res : (res && res.questions) || []).map(norm).filter(Boolean);
+      made += got.length; all.push(...got);
+      if (state.isExample || !state.questions.length) startQuiz(all.slice(), false);
+      else { state.questions.push(...got); persist(); render(); }
+    }
+    setStatus("#genStatus", `${all.length} preguntas listas (${made} con Gemini).`);
+  } catch (e) {
+    setStatus("#genStatus", (all.length ? `${all.length} preguntas listas. ` : "") + errText(e), e.code !== "cancelled");
+  } finally { busy(false); }
+}
+$("#gen").onclick = generate;
+
+/* =================== quiz =================== */
+function startQuiz(qs, isExample){
+  state.questions = qs; state.idx = 0; state.resp = {}; state.view = "practice"; state.isExample = isExample;
+  persist(); render();
+}
+function openScore(q, text){
+  const kw = keyWords(q.model); if (!kw.length) return 0;
+  const got = new Set(keyWords(text));
+  const hit = kw.filter(w => got.has(w) || [...got].some(g => g.length > 4 && (g.startsWith(w.slice(0, 5)) || w.startsWith(g.slice(0, 5))))).length;
+  return Math.min(1, hit / Math.max(3, Math.ceil(kw.length * 0.6)));
+}
+function isCorrect(q, r){
+  if (!r) return false;
+  if (q.type === "match") return q.pairs.every((_, i) => r.match && r.match[i] === q.order.indexOf(i));
+  if (q.type === "cloze") return sameAnswer(r.text || "", q.answerText);
+  if (q.type === "open") return r.self != null ? r.self : (r.ai != null ? r.ai >= 60 : (r.score || 0) >= 0.6);
+  return r.choice === q.answer;
+}
+const immediate = () => $("#immediate").checked;
+const revealed = q => { const r = state.resp[q.id]; return r && (r.checked || state.view === "results"); };
+function scoreLine(){
+  const qs = state.questions; const ans = qs.filter(q => state.resp[q.id] && state.resp[q.id].checked);
+  const ok = ans.filter(q => isCorrect(q, state.resp[q.id])).length;
+  return immediate() ? `<span class="score"><b>${ok}</b> correctas de ${ans.length} respondidas</span>` : `<span class="score">${qs.filter(q => state.resp[q.id]).length} de ${qs.length} respondidas</span>`;
+}
+
+function render(){
+  const box = $("#quiz"); const qs = state.questions;
+  if (!qs.length) { box.innerHTML = `<div class="empty">Aún no hay preguntas. Carga tu material y pulsa “Generar preguntas”.</div>`; return; }
+  if (state.view === "results") return renderResults();
+  const q = qs[state.idx]; const r = state.resp[q.id] || {}; const show = revealed(q);
+  let body = "";
+  if (state.isExample) body += `<div class="banner">Ejemplo generado sin internet con los apuntes de muestra. Pega tus apuntes en el paso 1 y genera los tuyos.</div>`;
+  body += `<div class="progress" aria-hidden="true"><i style="width:${((state.idx + 1) / qs.length) * 100}%"></i></div>
+    <div class="row between"><div class="qmeta"><span class="qnum">Pregunta ${state.idx + 1} de ${qs.length}</span><span class="pill t-${q.type}">${TYPE_NAME[q.type]}</span>${q.topic && q.type !== "mcq" && q.type !== "cloze" && q.type !== "tf" && q.type !== "open" ? `<span class="pill">${esc(q.topic)}</span>` : ""}</div>${scoreLine()}</div>`;
+  if (q.case) body += `<div class="case"><span class="lbl">${esc(q.caseLabel || "Caso")}</span>${esc(q.case)}</div>`;
+  body += `<p class="stem">${esc(q.stem)}</p>`;
+
+  if (q.type === "match") {
+    body += `<div class="match"><div>${q.pairs.map((p, i) => {
+      const v = r.match ? r.match[i] : -1; const good = show && v === q.order.indexOf(i);
+      return `<div class="mrow ${show ? (good ? "right" : "wrong") : ""}"><span class="c">${i + 1}. ${esc(p.left)}</span>${show && !good ? `<span class="fix">→ ${LET[q.order.indexOf(i)]}</span>` : ""}
+        <select id="m-${q.id}-${i}" data-mi="${i}" aria-label="Pareja para ${esc(p.left)}" ${show ? "disabled" : ""}><option value="-1">—</option>${q.order.map((_, k) => `<option value="${k}" ${v === k ? "selected" : ""}>${LET[k]}</option>`).join("")}</select></div>`;
+    }).join("")}</div><div class="defs">${q.order.map((pi, k) => `<div><b>${LET[k]}</b><span>${esc(q.pairs[pi].right)}</span></div>`).join("")}</div></div>`;
+    if (!show && immediate()) body += `<div><button class="primary" id="check">Comprobar</button></div>`;
+  } else if (q.type === "cloze") {
+    body += `<input type="text" class="typed1" id="t-${q.id}" value="${esc(r.text || "")}" placeholder="Escribe tu respuesta" ${show ? "disabled" : ""} autocomplete="off">`;
+    if (!show && immediate()) body += `<div><button class="primary" id="check">Comprobar</button></div>`;
+  } else if (q.type === "open") {
+    body += `<textarea class="typed" id="t-${q.id}" placeholder="Escribe tu respuesta con tus palabras…" ${show ? "disabled" : ""}>${esc(r.text || "")}</textarea>`;
+    if (!show && immediate()) body += `<div class="row"><button class="primary" id="check">Comprobar</button>${gReady() ? `<span class="note">Gemini corregirá tu respuesta.</span>` : `<span class="note">Se compara con las ideas clave de tus apuntes.</span>`}</div>`;
+  } else {
+    body += `<div class="opts">${q.options.map((o, i) => {
+      let cls = "opt"; if (show) { if (i === q.answer) cls += " right"; else if (i === r.choice) cls += " wrong"; } else if (i === r.choice) cls += " sel";
+      return `<button class="${cls}" data-oi="${i}" ${show ? "disabled" : ""}><span class="k">${LET[i]}</span><span>${esc(o)}</span></button>`;
+    }).join("")}</div>`;
+  }
+
+  if (show) body += feedback(q, r);
+  const last = state.idx === qs.length - 1;
+  box.innerHTML = `<div class="sheet-body">${body}</div>
+    <div class="nav"><button id="prev" ${state.idx === 0 ? "disabled" : ""}>Anterior</button>
+    <div class="row"><button class="ghost" id="finish">Terminar y ver resultados</button>${last ? "" : `<button class="primary" id="next">Siguiente</button>`}</div></div>`;
+
+  box.querySelectorAll("[data-oi]").forEach(b => b.onclick = () => { state.resp[q.id] = {choice: +b.dataset.oi, checked: immediate()}; persist(); render(); });
+  box.querySelectorAll("[data-mi]").forEach(s => s.onchange = () => {
+    const rr = state.resp[q.id] = state.resp[q.id] || {}; rr.match = rr.match || q.pairs.map(() => -1); rr.match[+s.dataset.mi] = +s.value; persist();
+  });
+  const t = document.getElementById("t-" + q.id);
+  if (t) {
+    t.oninput = () => { const rr = state.resp[q.id] = state.resp[q.id] || {}; rr.text = t.value; persist(); };
+    if (q.type === "cloze") t.onkeydown = e => { if (e.key === "Enter" && $("#check")) $("#check").click(); };
+  }
+  const ck = $("#check"); if (ck) ck.onclick = () => checkTyped(q);
+  box.querySelectorAll("[data-self]").forEach(b => b.onclick = () => { state.resp[q.id].self = b.dataset.self === "1"; persist(); render(); });
+  $("#prev").onclick = () => { state.idx--; persist(); render(); };
+  const nx = $("#next"); if (nx) nx.onclick = () => { state.idx++; persist(); render(); };
+  $("#finish").onclick = () => { state.view = "results"; persist(); render(); };
+}
+async function checkTyped(q){
+  const rr = state.resp[q.id] = state.resp[q.id] || {};
+  if (q.type === "match") { rr.match = rr.match || q.pairs.map(() => -1); rr.checked = true; persist(); return render(); }
+  const t = document.getElementById("t-" + q.id); rr.text = t ? t.value : (rr.text || "");
+  if (!rr.text.trim()) { t && t.focus(); return; }
+  if (q.type === "open") {
+    rr.score = openScore(q, rr.text);
+    if (gReady()) {
+      $("#check").disabled = true; $("#check").innerHTML = `<span class="spinner"></span>Corrigiendo…`;
+      try {
+        const g = await gemini(`Eres profesor universitario. Califica la respuesta del estudiante comparándola con la respuesta modelo. Valora la comprensión aunque use otras palabras.
+Pregunta: ${q.case ? q.case + "\n" : ""}${q.stem}
+Respuesta modelo: ${q.model}
+Respuesta del estudiante: ${rr.text}
+Responde solo JSON: {"score": número de 0 a 100, "feedback": "2-3 oraciones en español: qué estuvo bien, qué faltó o qué está mal"}`, {json: true});
+        rr.ai = Math.max(0, Math.min(100, Math.round(Number(g.score) || 0))); rr.aiFeedback = String(g.feedback || "");
+      } catch (e) { rr.aiError = errText(e); }
+    }
+  }
+  rr.checked = true; persist(); render();
+}
+function feedback(q, r){
+  if (q.type === "open") {
+    let head, cls;
+    if (r.ai != null) { cls = r.ai >= 70 ? "ok" : r.ai >= 40 ? "mid" : "no"; head = `Calificación de Gemini: ${r.ai}/100`; }
+    else { const s = r.score || 0; cls = s >= 0.6 ? "ok" : s >= 0.3 ? "mid" : "no"; head = s >= 0.6 ? "Incluiste las ideas clave" : s >= 0.3 ? "Respuesta parcial" : "Faltan ideas clave"; }
+    const self = r.self == null ? `<div class="row"><span class="note">¿Tu respuesta fue correcta?</span><button data-self="1">Sí, la sabía</button><button data-self="0">No</button></div>` : `<span class="note">Marcada como ${r.self ? "correcta" : "incorrecta"}.</span>`;
+    return `<div class="expl ${cls}"><strong>${head}</strong>${r.aiFeedback ? `<span>${esc(r.aiFeedback)}</span>` : ""}${r.aiError ? `<span>${r.aiError}</span>` : ""}<span><b>Respuesta modelo:</b> ${esc(q.model)}</span>${state.view === "results" ? "" : self}</div>`;
+  }
+  const ok = isCorrect(q, r);
+  let extra = "";
+  if (q.type === "match") extra = ` (${q.pairs.filter((_, i) => r.match && r.match[i] === q.order.indexOf(i)).length}/${q.pairs.length} parejas)`;
+  if (q.type === "cloze") extra = ok ? "" : ` · Respuesta: ${esc(q.answerText)}`;
+  return `<div class="expl ${ok ? "ok" : "no"}"><strong>${ok ? "Correcto" : "Incorrecto"}${extra}</strong><span>${esc(q.explanation)}</span></div>`;
+}
+function renderResults(){
+  const qs = state.questions;
+  const ok = qs.filter(q => isCorrect(q, state.resp[q.id])).length;
+  const pct = Math.round(ok / qs.length * 100);
+  const byType = {};
+  qs.forEach(q => { const t = byType[q.type] = byType[q.type] || {n: 0, ok: 0}; t.n++; if (isCorrect(q, state.resp[q.id])) t.ok++; });
+  const wrong = qs.filter(q => !isCorrect(q, state.resp[q.id]));
+  const yours = (q, r) => {
+    if (!r) return "Sin responder";
+    if (q.type === "match") return r.match ? q.pairs.map((p, i) => `${i + 1}→${r.match[i] >= 0 ? LET[r.match[i]] : "—"}`).join("  ") : "Sin responder";
+    if (q.type === "open" || q.type === "cloze") return r.text || "Sin responder";
+    return r.choice != null ? `${LET[r.choice]}) ${q.options[r.choice]}` : "Sin responder";
+  };
+  const right = q => q.type === "match" ? q.pairs.map(p => `${esc(p.left)} → ${esc(p.right)}`).join("<br>") : q.type === "open" ? esc(q.model) : q.type === "cloze" ? esc(q.answerText) : `${LET[q.answer]}) ${esc(q.options[q.answer])}`;
+  $("#quiz").innerHTML = `<div class="sheet-body">
+    <div class="result-top"><div><div class="bigscore">${pct}%</div><div class="score"><b>${ok}</b> de ${qs.length} correctas</div></div>
+      <div class="bars">${Object.entries(byType).map(([t, v]) => `<div class="bar"><span>${TYPE_NAME[t]}</span><span class="track"><i style="width:${v.ok / v.n * 100}%"></i></span><span class="mono">${v.ok}/${v.n}</span></div>`).join("")}</div></div>
+    <div class="row"><button class="primary" id="retryWrong" ${wrong.length ? "" : "disabled"}>Repetir las ${wrong.length} falladas</button><button id="restart">Repetir todo</button></div>
+    <span class="lbl">Revisión</span>
+    ${qs.map((q, i) => { const r = state.resp[q.id]; const st = !r ? "na" : isCorrect(q, r) ? "ok" : "no";
+      return `<details class="rv"><summary><span class="dot ${st}"></span><span><span class="qnum">${i + 1}.</span> ${esc(q.stem)}</span></summary><div class="inner">
+        ${q.case ? `<div class="case">${esc(q.case)}</div>` : ""}
+        <div><span class="lbl">Tu respuesta</span><br>${esc(yours(q, r))}</div>
+        <div><span class="lbl">Correcta</span><br>${right(q)}</div>
+        ${q.type !== "open" ? `<div>${esc(q.explanation)}</div>` : ""}</div></details>`; }).join("")}
+  </div>`;
+  $("#retryWrong").onclick = () => startQuiz(wrong.map(q => ({...q, id: uid()})), state.isExample);
+  $("#restart").onclick = () => startQuiz(qs.map(q => ({...q, id: uid()})), state.isExample);
+}
+$("#immediate").addEventListener("change", () => { store.set("ra.immediate", $("#immediate").checked); render(); });
+
+/* =================== Word export =================== */
+const xesc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])).replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, "");
+function run(t, o = {}){ return `<w:r><w:rPr>${o.b ? "<w:b/>" : ""}${o.i ? "<w:i/>" : ""}${o.sz ? `<w:sz w:val="${o.sz}"/>` : ""}${o.color ? `<w:color w:val="${o.color}"/>` : ""}</w:rPr><w:t xml:space="preserve">${xesc(t)}</w:t></w:r>`; }
+function para(runs, o = {}){
+  const ppr = `<w:pPr>${o.keep ? "<w:keepNext/>" : ""}${o.shade ? `<w:shd w:val="clear" w:color="auto" w:fill="${o.shade}"/>` : ""}${o.bottom ? `<w:pBdr><w:bottom w:val="single" w:sz="4" w:space="1" w:color="A8B2BD"/></w:pBdr>` : ""}<w:spacing w:before="${o.before ?? 0}" w:after="${o.after ?? 100}"/>${o.ind ? `<w:ind w:left="${o.ind}" w:hanging="${o.hang || 0}"/>` : ""}</w:pPr>`;
+  return `<w:p>${ppr}${Array.isArray(runs) ? runs.join("") : runs}</w:p>`;
+}
+const pageBreak = `<w:p><w:r><w:br w:type="page"/></w:r></w:p>`;
+function table(rows, widths){
+  const b = `<w:tblBorders>${["top","left","bottom","right","insideH","insideV"].map(s => `<w:${s} w:val="single" w:sz="4" w:color="A8B2BD"/>`).join("")}</w:tblBorders>`;
+  return `<w:tbl><w:tblPr><w:tblW w:w="${widths.reduce((a, c) => a + c, 0)}" w:type="dxa"/>${b}<w:tblCellMar><w:top w:w="60" w:type="dxa"/><w:left w:w="100" w:type="dxa"/><w:bottom w:w="60" w:type="dxa"/><w:right w:w="100" w:type="dxa"/></w:tblCellMar></w:tblPr><w:tblGrid>${widths.map(w => `<w:gridCol w:w="${w}"/>`).join("")}</w:tblGrid>${rows.map(r => `<w:tr>${r.map((c, i) => `<w:tc><w:tcPr><w:tcW w:w="${widths[i]}" w:type="dxa"/></w:tcPr>${c}</w:tc>`).join("")}</w:tr>`).join("")}</w:tbl>${para("", {after: 60})}`;
+}
+function buildDocx(qs, title, withKey, withHeader){
+  const P = [];
+  P.push(para(run(title, {b: true, sz: 34}), {after: 60}));
+  P.push(para(run(`${qs.length} preguntas`, {sz: 20, color: "5A6775"}), {after: 200}));
+  if (withHeader) P.push(table([[para(run("Nombre: ", {b: true})), para(run("Fecha: ", {b: true})), para(run(`Nota:      /${qs.length}`, {b: true}))]], [5000, 2400, 2238]));
+  qs.forEach((q, n) => {
+    P.push(para([run(`${n + 1}. `, {b: true}), run(`[${TYPE_NAME[q.type]}${q.topic && q.type === "case" ? " · " + q.topic : ""}]`, {sz: 18, color: "5A6775"})], {before: 160, after: 40, keep: true}));
+    if (q.case) P.push(para([q.caseLabel && q.type !== "case" ? run(q.caseLabel + ": ", {b: true, sz: 20}) : "", run(q.case, {i: q.type === "case"})], {shade: "EEF1F4", after: 80, keep: true}));
+    P.push(para(run(q.stem, {b: true}), {after: 80, keep: true}));
+    if (q.type === "match") P.push(table(q.pairs.map((p, i) => [para(run(`____  ${i + 1}. ${p.left}`)), para([run(`${LET[i]}. `, {b: true}), run(q.pairs[q.order[i]].right)])]), [3600, 6038]));
+    else if (q.type === "open") for (let i = 0; i < 5; i++) P.push(para(run(" "), {bottom: true, after: 120}));
+    else if (q.type === "cloze") P.push(para(run("Respuesta: ______________________________"), {after: 80}));
+    else q.options.forEach((o, i) => P.push(para([run(`${LET[i].toLowerCase()})  `, {b: true}), run(o)], {ind: 720, hang: 360, after: 40, keep: i < q.options.length - 1})));
+  });
+  if (withKey) {
+    P.push(pageBreak);
+    P.push(para(run("Hoja de respuestas", {b: true, sz: 30}), {after: 160}));
+    qs.forEach((q, n) => {
+      const ans = q.type === "match" ? q.pairs.map((p, i) => `${i + 1}-${LET[q.order.indexOf(i)]}`).join(", ")
+        : q.type === "open" ? "Respuesta modelo:" : q.type === "cloze" ? q.answerText : `${LET[q.answer].toLowerCase()}) ${q.options[q.answer]}`;
+      P.push(para([run(`${n + 1}. `, {b: true}), run(ans, {b: true})], {after: 30, keep: true}));
+      const ex = q.type === "open" ? q.model : q.explanation;
+      if (ex) P.push(para(run(ex, {sz: 20, color: "4A5663"}), {ind: 360, after: 120}));
+    });
+  }
+  const NS = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
+  const doc = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document ${NS}><w:body>${P.join("")}<w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1134" w:right="1134" w:bottom="1134" w:left="1134" w:header="567" w:footer="567" w:gutter="0"/></w:sectPr></w:body></w:document>`;
+  const styles = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:styles ${NS}><w:docDefaults><w:rPrDefault><w:rPr><w:rFonts w:ascii="Calibri" w:hAnsi="Calibri" w:eastAsia="Calibri" w:cs="Calibri"/><w:sz w:val="22"/><w:szCs w:val="22"/><w:lang w:val="es-EC"/></w:rPr></w:rPrDefault><w:pPrDefault><w:pPr><w:spacing w:after="100" w:line="264" w:lineRule="auto"/></w:pPr></w:pPrDefault></w:docDefaults><w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/></w:style></w:styles>`;
+  const R = 'xmlns="http://schemas.openxmlformats.org/package/2006/relationships"';
+  const zip = new JSZip();
+  zip.file("[Content_Types].xml", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/><Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/></Types>`);
+  zip.file("_rels/.rels", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships ${R}><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>`);
+  zip.file("word/_rels/document.xml.rels", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships ${R}><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>`);
+  zip.file("word/document.xml", doc);
+  zip.file("word/styles.xml", styles);
+  return zip.generateAsync({type: "blob", mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document"});
+}
+$("#dlOpen").onclick = () => { $("#dlPanel").hidden = !$("#dlPanel").hidden; };
+$("#dlClose").onclick = () => { $("#dlPanel").hidden = true; };
+$("#dlGo").onclick = async () => {
+  if (!state.questions.length) return setStatus("#dlStatus", "No hay preguntas para descargar.", true);
+  try {
+    const title = $("#qtitle").value.trim() || "Cuestionario de repaso";
+    const blob = await buildDocx(state.questions, title, $("#dlKey").checked, $("#dlHeader").checked);
+    const fname = title.replace(/[\\/:*?"<>|]+/g, "").slice(0, 80) + ".docx";
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a"); a.href = url; a.download = fname; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 4000);
+    setStatus("#dlStatus", `Descargado: ${esc(fname)}`);
+  } catch { setStatus("#dlStatus", "No se pudo crear el archivo. Revisa tu conexión (la primera carga necesita internet).", true); }
+};
+
+/* =================== boot =================== */
+(function boot(){
+  try { if (window.pdfjsLib) pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js"; } catch {}
+  if (store.get("ra.immediate") === false) $("#immediate").checked = false;
+  const m = store.get("ra.mat");
+  if (m && typeof m.text === "string") { matEl.value = m.text; state.sources = Array.isArray(m.sources) ? m.sources : []; }
+  else matEl.value = EXAMPLE_MATERIAL;
+  renderSources(); updateChars(); showConcepts();
+  const saved = store.get("ra.quiz");
+  if (saved && Array.isArray(saved.questions) && saved.questions.length) {
+    Object.assign(state, {questions: saved.questions, resp: saved.resp || {}, idx: Math.min(saved.idx || 0, saved.questions.length - 1), isExample: !!saved.isExample, view: saved.view === "results" ? "results" : "practice"});
+  } else {
+    state.questions = localGenerate(EXAMPLE_MATERIAL, ["mcq","tf","match","open","cloze","mcq"]).map(norm).filter(Boolean);
+  }
+  render();
+  const k = store.get("ra.gkey");
+  if (k) { $("#gKey").value = k; gConnect(k, store.get("ra.gmodel")); }
+})();
+</script>
+</body>
+</html>
